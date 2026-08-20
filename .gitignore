@@ -10,3 +10,6 @@ desktop.ini
 
 server/uploads/*
 !server/uploads/.gitkeep
+
+storage-node/storage/*
+!storage-node/storage/.gitkeep
