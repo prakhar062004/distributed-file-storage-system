@@ -3,6 +3,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const errorHandler = require('./middleware/errorHandler');
 const authRoutes = require('./routes/authRoutes');
+const fileRoutes = require('./routes/fileRoutes');
 
 
 const app = express();
@@ -27,6 +28,9 @@ app.get('/api/health', (req, res) => {
 });
 //Auth routes
 app.use('/api/auth', authRoutes);
+
+//File routes
+app.use('/api/files', fileRoutes);
 
 // 404 handler for unmatched routes
 app.use((req, res) => {
