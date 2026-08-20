@@ -1,22 +1,24 @@
-import { useEffect, useState } from 'react';
-import api from './services/api';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Dashboard from './pages/Dashboard';
+import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
-  const [status, setStatus] = useState('checking...');
-
-  useEffect(() => {
-    api.get('/health')
-      .then((res) => setStatus(res.data.message))
-      .catch(() => setStatus('Failed to connect to backend'));
-  }, []);
-
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-white mb-4">Distributed File Storage System</h1>
-        <p className="text-lg text-slate-300">Backend status: {status}</p>
-      </div>
-    </div>
+    <Routes>
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   );
 }
 

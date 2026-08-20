@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const errorHandler = require('./middleware/errorHandler');
+const authRoutes = require('./routes/authRoutes');
+
 
 const app = express();
 
@@ -17,10 +19,14 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
+
+
 // Health check route
 app.get('/api/health', (req, res) => {
   res.status(200).json({ success: true, message: 'Server is running' });
 });
+//Auth routes
+app.use('/api/auth', authRoutes);
 
 // 404 handler for unmatched routes
 app.use((req, res) => {
