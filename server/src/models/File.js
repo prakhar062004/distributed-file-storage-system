@@ -22,7 +22,8 @@ const fileSchema = new mongoose.Schema(
     },
     storedFilename: {
       type: String,
-      required: true,
+      default: null,
+      // Legacy from Phase 4 (pre-chunking). Chunked files use the Chunk collection instead.
     },
     ownerId: {
       type: mongoose.Schema.Types.ObjectId,

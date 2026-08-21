@@ -13,3 +13,6 @@ server/uploads/*
 
 storage-node/storage/*
 !storage-node/storage/.gitkeep
+
+server/chunks/*
+!server/chunks/.gitkeep
