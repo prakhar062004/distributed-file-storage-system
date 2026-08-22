@@ -1,20 +1,13 @@
 const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
 const Chunk = require('../models/Chunk');
-
+const { selectNodeConsistentHash, sendChunkToNode } = require('./storageCoordinator');
 const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE, 10) || 1048576;
 
-const CHUNKS_DIR = path.join(__dirname, '../../chunks');
-
-if (!fs.existsSync(CHUNKS_DIR)) {
-  fs.mkdirSync(CHUNKS_DIR, { recursive: true });
-}
-
 /**
- * Reads a file from disk in a streaming fashion and splits it into
- * fixed-size chunks, writing each chunk to disk and creating a
- * corresponding Chunk document in MongoDB.
+ * Reads a file from disk in a streaming fashion, splits it into fixed-size
+ * chunks, and sends each chunk to a storage node (selected via consistent hashing)
+ * instead of writing to local disk.
  */
 const chunkFile = async (sourceFilePath, fileId) => {
   const createdChunks = [];
@@ -29,28 +22,27 @@ const chunkFile = async (sourceFilePath, fileId) => {
     while (buffer.length >= CHUNK_SIZE) {
       const chunkData = buffer.subarray(0, CHUNK_SIZE);
       buffer = buffer.subarray(CHUNK_SIZE);
-      const chunk = await writeChunk(fileId, chunkIndex, chunkData);
+      const chunk = await distributeChunk(fileId, chunkIndex, chunkData);
       createdChunks.push(chunk);
       chunkIndex++;
     }
   }
 
-  // Final partial chunk (file size isn't necessarily a multiple of CHUNK_SIZE)
   if (buffer.length > 0) {
-    const chunk = await writeChunk(fileId, chunkIndex, buffer);
+    const chunk = await distributeChunk(fileId, chunkIndex, buffer);
     createdChunks.push(chunk);
   }
 
   return createdChunks;
 };
 
-const writeChunk = async (fileId, chunkIndex, data) => {
+const distributeChunk = async (fileId, chunkIndex, data) => {
   const chunkId = crypto.randomBytes(16).toString('hex');
-  const chunkPath = path.join(CHUNKS_DIR, chunkId);
-
-  fs.writeFileSync(chunkPath, data);
-
   const checksum = crypto.createHash('sha256').update(data).digest('hex');
+
+  const targetNode = selectNodeConsistentHash(chunkId);
+
+  await sendChunkToNode(targetNode, chunkId, data);
 
   const chunk = await Chunk.create({
     chunkId,
@@ -58,7 +50,7 @@ const writeChunk = async (fileId, chunkIndex, data) => {
     chunkIndex,
     size: data.length,
     checksum,
-    storageLocations: ['local'],
+    storageLocations: [targetNode.nodeId],
   });
 
   return chunk;

@@ -1,12 +1,10 @@
 const fs = require('fs');
-const path = require('path');
 const File = require('../models/File');
 const Chunk = require('../models/Chunk');
 const { chunkFile } = require('../services/chunkingService');
+const { getChunkFromNode, deleteChunkFromNode, STORAGE_NODES } = require('../services/storageCoordinator');
 
-const CHUNKS_DIR = path.join(__dirname, '../../chunks');
-
-// @desc    Upload a file (chunked)
+// @desc    Upload a file (chunked, distributed across storage nodes)
 // @route   POST /api/files/upload
 const uploadFile = async (req, res, next) => {
   let file;
@@ -74,7 +72,7 @@ const getFile = async (req, res, next) => {
   }
 };
 
-// @desc    Download a file (reconstructed from chunks)
+// @desc    Download a file (reconstructed from chunks across storage nodes)
 // @route   GET /api/files/:id/download
 const downloadFile = async (req, res, next) => {
   try {
@@ -91,13 +89,20 @@ const downloadFile = async (req, res, next) => {
     res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
     res.setHeader('Content-Type', file.mimeType);
 
-    // Stream chunks to the response sequentially, in order
     for (const chunk of chunks) {
-      const chunkPath = path.join(CHUNKS_DIR, chunk.chunkId);
-      if (!fs.existsSync(chunkPath)) {
-        return next(new Error(`Missing chunk ${chunk.chunkIndex} for file ${file._id}`));
+      const nodeId = chunk.storageLocations[0];
+      const node = STORAGE_NODES.find((n) => n.nodeId === nodeId);
+
+      if (!node) {
+        return next(new Error(`Unknown storage node ${nodeId} for chunk ${chunk.chunkIndex}`));
       }
-      await streamChunkToResponse(chunkPath, res);
+
+      try {
+        const chunkData = await getChunkFromNode(node, chunk.chunkId);
+        res.write(chunkData);
+      } catch (err) {
+        return next(new Error(`Failed to retrieve chunk ${chunk.chunkIndex} from ${nodeId}: ${err.message}`));
+      }
     }
 
     res.end();
@@ -106,16 +111,7 @@ const downloadFile = async (req, res, next) => {
   }
 };
 
-const streamChunkToResponse = (chunkPath, res) => {
-  return new Promise((resolve, reject) => {
-    const readStream = fs.createReadStream(chunkPath);
-    readStream.on('data', (data) => res.write(data));
-    readStream.on('end', resolve);
-    readStream.on('error', reject);
-  });
-};
-
-// @desc    Delete a file and its chunks
+// @desc    Delete a file and its chunks (across storage nodes)
 // @route   DELETE /api/files/:id
 const deleteFile = async (req, res, next) => {
   try {
@@ -127,9 +123,16 @@ const deleteFile = async (req, res, next) => {
     const chunks = await Chunk.find({ fileId: file._id });
 
     for (const chunk of chunks) {
-      const chunkPath = path.join(CHUNKS_DIR, chunk.chunkId);
-      if (fs.existsSync(chunkPath)) {
-        fs.unlinkSync(chunkPath);
+      const nodeId = chunk.storageLocations[0];
+      const node = STORAGE_NODES.find((n) => n.nodeId === nodeId);
+
+      if (node) {
+        try {
+          await deleteChunkFromNode(node, chunk.chunkId);
+        } catch (err) {
+          // Log but don't block deletion — the metadata record is the source of truth
+          console.error(`Failed to delete chunk ${chunk.chunkId} from ${nodeId}: ${err.message}`);
+        }
       }
     }
 

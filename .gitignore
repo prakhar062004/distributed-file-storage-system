@@ -16,3 +16,7 @@ storage-node/storage/*
 
 server/chunks/*
 !server/chunks/.gitkeep
+
+storage-node/storage-node-2-data/
+storage-node/storage-node-3-data/
+
