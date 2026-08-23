@@ -7,6 +7,7 @@ const {
   getFile,
   downloadFile,
   deleteFile,
+  verifyFileIntegrity,
 } = require('../controllers/fileController');
 
 const router = express.Router();
@@ -17,6 +18,7 @@ router.post('/upload', upload.single('file'), uploadFile);
 router.get('/', listFiles);
 router.get('/:id', getFile);
 router.get('/:id/download', downloadFile);
+router.get('/:id/verify', verifyFileIntegrity);
 router.delete('/:id', deleteFile);
 
 module.exports = router;

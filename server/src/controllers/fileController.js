@@ -3,6 +3,7 @@ const File = require('../models/File');
 const Chunk = require('../models/Chunk');
 const { chunkFile } = require('../services/chunkingService');
 const { getChunkFromNode, deleteChunkFromNode, STORAGE_NODES } = require('../services/storageCoordinator');
+const { verifyChecksum } = require('../utils/checksum');
 
 // @desc    Upload a file (chunked, distributed and replicated across storage nodes)
 // @route   POST /api/files/upload
@@ -92,14 +93,21 @@ const downloadFile = async (req, res, next) => {
       let chunkData = null;
       let lastError = null;
 
-      // Try each replica location in order until one succeeds
       for (const nodeId of chunk.storageLocations) {
         const node = STORAGE_NODES.find((n) => n.nodeId === nodeId);
         if (!node) continue;
 
         try {
-          chunkData = await getChunkFromNode(node, chunk.chunkId);
-          break; // success — no need to try further replicas
+          const candidateData = await getChunkFromNode(node, chunk.chunkId);
+
+          if (!verifyChecksum(candidateData, chunk.checksum)) {
+            lastError = new Error(`Checksum mismatch — data corruption detected on ${nodeId}`);
+            console.error(`CORRUPTION DETECTED: chunk ${chunk.chunkIndex} on ${nodeId} failed checksum verification, trying next replica`);
+            continue;
+          }
+
+          chunkData = candidateData;
+          break;
         } catch (err) {
           lastError = err;
           console.error(`Replica on ${nodeId} failed for chunk ${chunk.chunkIndex}, trying next replica if available`);
@@ -107,13 +115,55 @@ const downloadFile = async (req, res, next) => {
       }
 
       if (!chunkData) {
-        return next(new Error(`All replicas failed for chunk ${chunk.chunkIndex}: ${lastError?.message}`));
+        return next(new Error(`All replicas failed or were corrupted for chunk ${chunk.chunkIndex}: ${lastError?.message}`));
       }
 
       res.write(chunkData);
     }
 
     res.end();
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Verify integrity of all chunks for a file (checks every replica)
+// @route   GET /api/files/:id/verify
+const verifyFileIntegrity = async (req, res, next) => {
+  try {
+    const file = await File.findOne({ _id: req.params.id, ownerId: req.user.id });
+    if (!file) {
+      return res.status(404).json({ success: false, error: 'File not found' });
+    }
+
+    const chunks = await Chunk.find({ fileId: file._id }).sort({ chunkIndex: 1 });
+    const report = [];
+
+    for (const chunk of chunks) {
+      const chunkReport = { chunkIndex: chunk.chunkIndex, chunkId: chunk.chunkId, replicas: [] };
+
+      for (const nodeId of chunk.storageLocations) {
+        const node = STORAGE_NODES.find((n) => n.nodeId === nodeId);
+        if (!node) {
+          chunkReport.replicas.push({ nodeId, status: 'unknown-node' });
+          continue;
+        }
+
+        try {
+          const data = await getChunkFromNode(node, chunk.chunkId);
+          const isValid = verifyChecksum(data, chunk.checksum);
+          chunkReport.replicas.push({ nodeId, status: isValid ? 'ok' : 'corrupted' });
+        } catch (err) {
+          chunkReport.replicas.push({ nodeId, status: 'unreachable' });
+        }
+      }
+
+      report.push(chunkReport);
+    }
+
+    const allHealthy = report.every((c) => c.replicas.some((r) => r.status === 'ok'));
+
+    res.status(200).json({ success: true, fileId: file._id, allHealthy, chunks: report });
   } catch (error) {
     next(error);
   }
@@ -137,7 +187,6 @@ const deleteFile = async (req, res, next) => {
           try {
             await deleteChunkFromNode(node, chunk.chunkId);
           } catch (err) {
-            // Log but don't block deletion — the metadata record is the source of truth
             console.error(`Failed to delete chunk ${chunk.chunkId} from ${nodeId}: ${err.message}`);
           }
         }
@@ -153,4 +202,4 @@ const deleteFile = async (req, res, next) => {
   }
 };
 
-module.exports = { uploadFile, listFiles, getFile, downloadFile, deleteFile };
+module.exports = { uploadFile, listFiles, getFile, downloadFile, deleteFile, verifyFileIntegrity };

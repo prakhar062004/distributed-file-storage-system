@@ -2,6 +2,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const Chunk = require('../models/Chunk');
 const { selectNodesForReplication, sendChunkToNode } = require('./storageCoordinator');
+const { computeChecksum } = require('../utils/checksum');
 
 const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE, 10) || 1048576;
 const REPLICATION_FACTOR = parseInt(process.env.REPLICATION_FACTOR, 10) || 1;
@@ -40,8 +41,7 @@ const chunkFile = async (sourceFilePath, fileId) => {
 
 const distributeChunk = async (fileId, chunkIndex, data) => {
   const chunkId = crypto.randomBytes(16).toString('hex');
-  const checksum = crypto.createHash('sha256').update(data).digest('hex');
-
+  const checksum = computeChecksum(data);
   const targetNodes = selectNodesForReplication(chunkId, REPLICATION_FACTOR);
 
   if (targetNodes.length === 0) {
