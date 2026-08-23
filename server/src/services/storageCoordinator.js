@@ -25,6 +25,15 @@ const selectNodeConsistentHash = (chunkId) => {
   return hashRing.getNode(chunkId);
 };
 
+/**
+ * Returns `replicationFactor` distinct nodes for a chunk, using the hash
+ * ring's clockwise walk. The first node returned is the "primary" placement;
+ * the rest are replicas.
+ */
+const selectNodesForReplication = (chunkId, replicationFactor) => {
+  return hashRing.getNodes(chunkId, replicationFactor);
+};
+
 const sendChunkToNode = async (node, chunkId, buffer) => {
   const form = new FormData();
   form.append('chunkId', chunkId);
@@ -53,6 +62,7 @@ const deleteChunkFromNode = async (node, chunkId) => {
 module.exports = {
   selectNodeRoundRobin,
   selectNodeConsistentHash,
+  selectNodesForReplication,
   sendChunkToNode,
   getChunkFromNode,
   deleteChunkFromNode,

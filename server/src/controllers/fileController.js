@@ -4,7 +4,7 @@ const Chunk = require('../models/Chunk');
 const { chunkFile } = require('../services/chunkingService');
 const { getChunkFromNode, deleteChunkFromNode, STORAGE_NODES } = require('../services/storageCoordinator');
 
-// @desc    Upload a file (chunked, distributed across storage nodes)
+// @desc    Upload a file (chunked, distributed and replicated across storage nodes)
 // @route   POST /api/files/upload
 const uploadFile = async (req, res, next) => {
   let file;
@@ -26,7 +26,6 @@ const uploadFile = async (req, res, next) => {
 
     const chunks = await chunkFile(tempFilePath, file._id);
 
-    // Original whole-file temp copy is no longer needed once chunked
     fs.unlinkSync(tempFilePath);
 
     file.status = 'available';
@@ -72,7 +71,7 @@ const getFile = async (req, res, next) => {
   }
 };
 
-// @desc    Download a file (reconstructed from chunks across storage nodes)
+// @desc    Download a file (reconstructed from chunks, trying each replica in order)
 // @route   GET /api/files/:id/download
 const downloadFile = async (req, res, next) => {
   try {
@@ -90,19 +89,28 @@ const downloadFile = async (req, res, next) => {
     res.setHeader('Content-Type', file.mimeType);
 
     for (const chunk of chunks) {
-      const nodeId = chunk.storageLocations[0];
-      const node = STORAGE_NODES.find((n) => n.nodeId === nodeId);
+      let chunkData = null;
+      let lastError = null;
 
-      if (!node) {
-        return next(new Error(`Unknown storage node ${nodeId} for chunk ${chunk.chunkIndex}`));
+      // Try each replica location in order until one succeeds
+      for (const nodeId of chunk.storageLocations) {
+        const node = STORAGE_NODES.find((n) => n.nodeId === nodeId);
+        if (!node) continue;
+
+        try {
+          chunkData = await getChunkFromNode(node, chunk.chunkId);
+          break; // success — no need to try further replicas
+        } catch (err) {
+          lastError = err;
+          console.error(`Replica on ${nodeId} failed for chunk ${chunk.chunkIndex}, trying next replica if available`);
+        }
       }
 
-      try {
-        const chunkData = await getChunkFromNode(node, chunk.chunkId);
-        res.write(chunkData);
-      } catch (err) {
-        return next(new Error(`Failed to retrieve chunk ${chunk.chunkIndex} from ${nodeId}: ${err.message}`));
+      if (!chunkData) {
+        return next(new Error(`All replicas failed for chunk ${chunk.chunkIndex}: ${lastError?.message}`));
       }
+
+      res.write(chunkData);
     }
 
     res.end();
@@ -111,7 +119,7 @@ const downloadFile = async (req, res, next) => {
   }
 };
 
-// @desc    Delete a file and its chunks (across storage nodes)
+// @desc    Delete a file and all its chunk replicas across storage nodes
 // @route   DELETE /api/files/:id
 const deleteFile = async (req, res, next) => {
   try {
@@ -123,15 +131,15 @@ const deleteFile = async (req, res, next) => {
     const chunks = await Chunk.find({ fileId: file._id });
 
     for (const chunk of chunks) {
-      const nodeId = chunk.storageLocations[0];
-      const node = STORAGE_NODES.find((n) => n.nodeId === nodeId);
-
-      if (node) {
-        try {
-          await deleteChunkFromNode(node, chunk.chunkId);
-        } catch (err) {
-          // Log but don't block deletion — the metadata record is the source of truth
-          console.error(`Failed to delete chunk ${chunk.chunkId} from ${nodeId}: ${err.message}`);
+      for (const nodeId of chunk.storageLocations) {
+        const node = STORAGE_NODES.find((n) => n.nodeId === nodeId);
+        if (node) {
+          try {
+            await deleteChunkFromNode(node, chunk.chunkId);
+          } catch (err) {
+            // Log but don't block deletion — the metadata record is the source of truth
+            console.error(`Failed to delete chunk ${chunk.chunkId} from ${nodeId}: ${err.message}`);
+          }
         }
       }
     }
@@ -139,7 +147,7 @@ const deleteFile = async (req, res, next) => {
     await Chunk.deleteMany({ fileId: file._id });
     await File.deleteOne({ _id: file._id });
 
-    res.status(200).json({ success: true, message: 'File and chunks deleted' });
+    res.status(200).json({ success: true, message: 'File and all chunk replicas deleted' });
   } catch (error) {
     next(error);
   }

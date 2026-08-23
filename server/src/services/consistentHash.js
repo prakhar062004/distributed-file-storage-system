@@ -47,9 +47,6 @@ class ConsistentHashRing {
 
     const keyHash = hash(key);
 
-    // Find the first hash in the ring that is >= keyHash (binary search)
-    let low = 0;
-    let high = this.sortedHashes.length - 1;
     let result = this.sortedHashes[0]; // wrap around by default
 
     for (let i = 0; i < this.sortedHashes.length; i++) {
@@ -61,6 +58,42 @@ class ConsistentHashRing {
 
     const nodeId = this.ring.get(result);
     return this.nodes[nodeId];
+  }
+
+  /**
+   * Returns the N distinct physical nodes responsible for a key, walking
+   * clockwise around the ring starting from the key's hash position.
+   * Used for replication: the first node is the "primary" placement,
+   * subsequent nodes are replicas.
+   */
+  getNodes(key, count) {
+    if (this.sortedHashes.length === 0) return [];
+
+    const keyHash = hash(key);
+    const seenNodeIds = new Set();
+    const result = [];
+
+    let startIdx = this.sortedHashes.findIndex((h) => h >= keyHash);
+    if (startIdx === -1) startIdx = 0;
+
+    let idx = startIdx;
+    let attempts = 0;
+    const maxAttempts = this.sortedHashes.length;
+
+    while (seenNodeIds.size < count && attempts < maxAttempts) {
+      const h = this.sortedHashes[idx];
+      const nodeId = this.ring.get(h);
+
+      if (!seenNodeIds.has(nodeId)) {
+        seenNodeIds.add(nodeId);
+        result.push(this.nodes[nodeId]);
+      }
+
+      idx = (idx + 1) % this.sortedHashes.length;
+      attempts++;
+    }
+
+    return result;
   }
 }
 

@@ -1,13 +1,15 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const Chunk = require('../models/Chunk');
-const { selectNodeConsistentHash, sendChunkToNode } = require('./storageCoordinator');
+const { selectNodesForReplication, sendChunkToNode } = require('./storageCoordinator');
+
 const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE, 10) || 1048576;
+const REPLICATION_FACTOR = parseInt(process.env.REPLICATION_FACTOR, 10) || 1;
 
 /**
  * Reads a file from disk in a streaming fashion, splits it into fixed-size
- * chunks, and sends each chunk to a storage node (selected via consistent hashing)
- * instead of writing to local disk.
+ * chunks, and sends each chunk to REPLICATION_FACTOR storage nodes (selected
+ * via consistent hashing) instead of writing to local disk.
  */
 const chunkFile = async (sourceFilePath, fileId) => {
   const createdChunks = [];
@@ -40,9 +42,28 @@ const distributeChunk = async (fileId, chunkIndex, data) => {
   const chunkId = crypto.randomBytes(16).toString('hex');
   const checksum = crypto.createHash('sha256').update(data).digest('hex');
 
-  const targetNode = selectNodeConsistentHash(chunkId);
+  const targetNodes = selectNodesForReplication(chunkId, REPLICATION_FACTOR);
 
-  await sendChunkToNode(targetNode, chunkId, data);
+  if (targetNodes.length === 0) {
+    throw new Error('No storage nodes available for chunk placement');
+  }
+
+  const successfulNodeIds = [];
+  const results = await Promise.allSettled(
+    targetNodes.map((node) => sendChunkToNode(node, chunkId, data))
+  );
+
+  results.forEach((result, i) => {
+    if (result.status === 'fulfilled') {
+      successfulNodeIds.push(targetNodes[i].nodeId);
+    } else {
+      console.error(`Failed to replicate chunk ${chunkId} to ${targetNodes[i].nodeId}: ${result.reason.message}`);
+    }
+  });
+
+  if (successfulNodeIds.length === 0) {
+    throw new Error(`Failed to store chunk ${chunkId} on any node`);
+  }
 
   const chunk = await Chunk.create({
     chunkId,
@@ -50,10 +71,10 @@ const distributeChunk = async (fileId, chunkIndex, data) => {
     chunkIndex,
     size: data.length,
     checksum,
-    storageLocations: [targetNode.nodeId],
+    storageLocations: successfulNodeIds,
   });
 
   return chunk;
 };
 
-module.exports = { chunkFile, CHUNK_SIZE };
+module.exports = { chunkFile, CHUNK_SIZE, REPLICATION_FACTOR };
