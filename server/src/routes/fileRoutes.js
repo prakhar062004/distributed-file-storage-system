@@ -4,6 +4,7 @@ const upload = require('../config/multerConfig');
 const {
   uploadFile,
   listFiles,
+  getInProgressUploads,
   getFile,
   downloadFile,
   deleteFile,
@@ -15,6 +16,7 @@ const router = express.Router();
 router.use(protect); // every route below requires authentication
 
 router.post('/upload', upload.single('file'), uploadFile);
+router.get('/uploads/in-progress', getInProgressUploads);
 router.get('/', listFiles);
 router.get('/:id', getFile);
 router.get('/:id/download', downloadFile);

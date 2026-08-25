@@ -4,6 +4,7 @@ const Chunk = require('../models/Chunk');
 const { chunkFile } = require('../services/chunkingService');
 const { getChunkFromNode, deleteChunkFromNode, STORAGE_NODES } = require('../services/storageCoordinator');
 const { verifyChecksum } = require('../utils/checksum');
+const redisClient = require('../config/redis');
 
 // @desc    Upload a file (chunked, distributed and replicated across storage nodes)
 // @route   POST /api/files/upload
@@ -23,6 +24,15 @@ const uploadFile = async (req, res, next) => {
       status: 'processing',
     });
 
+    // Track upload progress in Redis — ephemeral, only meaningful while upload is in-flight
+    const uploadStateKey = `upload:inprogress:${file._id}`;
+    await redisClient.set(uploadStateKey, JSON.stringify({
+      fileId: file._id,
+      ownerId: req.user.id,
+      startedAt: Date.now(),
+      status: 'chunking',
+    }), 'EX', 300); // 5 minute safety TTL — auto-cleans if something goes wrong
+
     const tempFilePath = req.file.path;
 
     const chunks = await chunkFile(tempFilePath, file._id);
@@ -31,6 +41,9 @@ const uploadFile = async (req, res, next) => {
 
     file.status = 'available';
     await file.save();
+
+    await redisClient.del(uploadStateKey); // upload complete — no longer "in progress"
+    await redisClient.del(`files:list:${req.user.id}`);
 
     res.status(201).json({
       success: true,
@@ -50,8 +63,42 @@ const uploadFile = async (req, res, next) => {
 // @route   GET /api/files
 const listFiles = async (req, res, next) => {
   try {
+    const cacheKey = `files:list:${req.user.id}`;
+
+    const cached = await redisClient.get(cacheKey);
+    if (cached) {
+      const files = JSON.parse(cached);
+      return res.status(200).json({ success: true, count: files.length, files, cached: true });
+    }
+
     const files = await File.find({ ownerId: req.user.id, status: { $ne: 'deleted' } }).sort({ createdAt: -1 });
-    res.status(200).json({ success: true, count: files.length, files });
+
+    await redisClient.set(cacheKey, JSON.stringify(files), 'EX', 30); // 30s TTL
+
+    res.status(200).json({ success: true, count: files.length, files, cached: false });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    List the current user's in-progress uploads
+// @route   GET /api/files/uploads/in-progress
+const getInProgressUploads = async (req, res, next) => {
+  try {
+    const keys = await redisClient.keys('upload:inprogress:*');
+    const uploads = [];
+
+    for (const key of keys) {
+      const raw = await redisClient.get(key);
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data.ownerId === req.user.id) {
+          uploads.push(data);
+        }
+      }
+    }
+
+    res.status(200).json({ success: true, uploads });
   } catch (error) {
     next(error);
   }
@@ -195,6 +242,7 @@ const deleteFile = async (req, res, next) => {
 
     await Chunk.deleteMany({ fileId: file._id });
     await File.deleteOne({ _id: file._id });
+    await redisClient.del(`files:list:${req.user.id}`);
 
     res.status(200).json({ success: true, message: 'File and all chunk replicas deleted' });
   } catch (error) {
@@ -202,4 +250,12 @@ const deleteFile = async (req, res, next) => {
   }
 };
 
-module.exports = { uploadFile, listFiles, getFile, downloadFile, deleteFile, verifyFileIntegrity };
+module.exports = {
+  uploadFile,
+  listFiles,
+  getInProgressUploads,
+  getFile,
+  downloadFile,
+  deleteFile,
+  verifyFileIntegrity,
+};
