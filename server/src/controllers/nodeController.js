@@ -1,4 +1,5 @@
 const { recordHeartbeat, getAllNodeStatuses } = require('../services/nodeHealthService');
+const { runRecoveryCycle } = require('../services/recoveryService');
 
 // @desc    Receive a heartbeat from a storage node
 // @route   POST /api/nodes/heartbeat
@@ -29,4 +30,15 @@ const getNodesStatus = async (req, res, next) => {
   }
 };
 
-module.exports = { receiveHeartbeat, getNodesStatus };
+// @desc    Manually trigger a recovery cycle (normally runs automatically on a timer)
+// @route   POST /api/nodes/recover
+const triggerRecovery = async (req, res, next) => {
+  try {
+    const result = await runRecoveryCycle();
+    res.status(200).json({ success: true, result });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { receiveHeartbeat, getNodesStatus, triggerRecovery };
