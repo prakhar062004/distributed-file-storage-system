@@ -4,6 +4,7 @@ const morgan = require('morgan');
 const errorHandler = require('./middleware/errorHandler');
 const authRoutes = require('./routes/authRoutes');
 const fileRoutes = require('./routes/fileRoutes');
+const nodeRoutes = require('./routes/nodeRoutes');
 
 
 const app = express();
@@ -15,6 +16,7 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/api/nodes', nodeRoutes);
 
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
