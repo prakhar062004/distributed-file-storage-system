@@ -5,6 +5,9 @@ const { chunkFile } = require('../services/chunkingService');
 const { getChunkFromNode, deleteChunkFromNode, STORAGE_NODES } = require('../services/storageCoordinator');
 const { verifyChecksum } = require('../utils/checksum');
 const redisClient = require('../config/redis');
+const { hasPermission } = require('../services/permissionService');
+const Share = require('../models/Share');
+
 
 // @desc    Upload a file (chunked, distributed and replicated across storage nodes)
 // @route   POST /api/files/upload
@@ -108,10 +111,12 @@ const getInProgressUploads = async (req, res, next) => {
 // @route   GET /api/files/:id
 const getFile = async (req, res, next) => {
   try {
-    const file = await File.findOne({ _id: req.params.id, ownerId: req.user.id });
-    if (!file) {
+    const allowed = await hasPermission(req.params.id, req.user.id, 'READ');
+    if (!allowed) {
       return res.status(404).json({ success: false, error: 'File not found' });
     }
+
+    const file = await File.findById(req.params.id);
     const chunks = await Chunk.find({ fileId: file._id }).sort({ chunkIndex: 1 });
     res.status(200).json({ success: true, file, chunkCount: chunks.length });
   } catch (error) {
@@ -123,10 +128,12 @@ const getFile = async (req, res, next) => {
 // @route   GET /api/files/:id/download
 const downloadFile = async (req, res, next) => {
   try {
-    const file = await File.findOne({ _id: req.params.id, ownerId: req.user.id });
-    if (!file) {
+    const allowed = await hasPermission(req.params.id, req.user.id, 'READ');
+    if (!allowed) {
       return res.status(404).json({ success: false, error: 'File not found' });
     }
+
+    const file = await File.findById(req.params.id);
 
     const chunks = await Chunk.find({ fileId: file._id }).sort({ chunkIndex: 1 });
     if (chunks.length === 0) {
@@ -178,12 +185,13 @@ const downloadFile = async (req, res, next) => {
 // @route   GET /api/files/:id/verify
 const verifyFileIntegrity = async (req, res, next) => {
   try {
-    const file = await File.findOne({ _id: req.params.id, ownerId: req.user.id });
-    if (!file) {
+    const allowed = await hasPermission(req.params.id, req.user.id, 'READ');
+    if (!allowed) {
       return res.status(404).json({ success: false, error: 'File not found' });
     }
 
-    const chunks = await Chunk.find({ fileId: file._id }).sort({ chunkIndex: 1 });
+    const file = await File.findById(req.params.id);
+  
     const report = [];
 
     for (const chunk of chunks) {
@@ -242,6 +250,7 @@ const deleteFile = async (req, res, next) => {
 
     await Chunk.deleteMany({ fileId: file._id });
     await File.deleteOne({ _id: file._id });
+    await Share.deleteMany({ fileId: file._id });
     await redisClient.del(`files:list:${req.user.id}`);
 
     res.status(200).json({ success: true, message: 'File and all chunk replicas deleted' });

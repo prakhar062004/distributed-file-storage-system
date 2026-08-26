@@ -5,7 +5,7 @@ const errorHandler = require('./middleware/errorHandler');
 const authRoutes = require('./routes/authRoutes');
 const fileRoutes = require('./routes/fileRoutes');
 const nodeRoutes = require('./routes/nodeRoutes');
-
+const shareRoutes = require('./routes/shareRoutes');
 
 const app = express();
 
@@ -22,16 +22,20 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-
-
 // Health check route
 app.get('/api/health', (req, res) => {
   res.status(200).json({ success: true, message: 'Server is running' });
 });
-//Auth routes
+
+// Auth routes
 app.use('/api/auth', authRoutes);
 
-//File routes
+// Share routes MUST be mounted before file routes — otherwise fileRoutes'
+// /:id catch-all intercepts requests like /shared-with-me before shareRoutes
+// ever gets a chance to match them.
+app.use('/api/files', shareRoutes);
+
+// File routes
 app.use('/api/files', fileRoutes);
 
 // 404 handler for unmatched routes
