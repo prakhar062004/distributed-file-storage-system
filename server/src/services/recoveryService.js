@@ -109,22 +109,4 @@ const repairChunk = async (chunk, unhealthyNodeIds, healthyNodeIds) => {
   return { repaired: true, reason: 'replicated to new node' };
 };
 
-let recoveryIntervalHandle = null;
-
-const startRecoveryLoop = () => {
-  const intervalMs = parseInt(process.env.RECOVERY_INTERVAL_MS, 10) || 20000;
-  console.log(`[recovery] Starting recovery cycle every ${intervalMs}ms`);
-
-  recoveryIntervalHandle = setInterval(async () => {
-    try {
-      const result = await runRecoveryCycle();
-      if (result.repaired > 0 || result.scanned > 0) {
-        console.log(`[recovery] Cycle complete:`, result);
-      }
-    } catch (err) {
-      console.error(`[recovery] Cycle failed: ${err.message}`);
-    }
-  }, intervalMs);
-};
-
-module.exports = { runRecoveryCycle, startRecoveryLoop };
+module.exports = { runRecoveryCycle, repairChunk };

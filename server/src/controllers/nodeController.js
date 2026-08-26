@@ -1,5 +1,7 @@
 const { recordHeartbeat, getAllNodeStatuses } = require('../services/nodeHealthService');
-const { runRecoveryCycle } = require('../services/recoveryService');
+const { storageQueue } = require('../queues/storageQueue');
+const JOB_TYPES = require('../queues/jobTypes');
+
 
 // @desc    Receive a heartbeat from a storage node
 // @route   POST /api/nodes/heartbeat
@@ -34,8 +36,12 @@ const getNodesStatus = async (req, res, next) => {
 // @route   POST /api/nodes/recover
 const triggerRecovery = async (req, res, next) => {
   try {
-    const result = await runRecoveryCycle();
-    res.status(200).json({ success: true, result });
+    const job = await storageQueue.add(JOB_TYPES.RUN_RECOVERY_CYCLE, {}, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 2000 },
+    });
+
+    res.status(202).json({ success: true, message: 'Recovery job enqueued', jobId: job.id });
   } catch (error) {
     next(error);
   }
