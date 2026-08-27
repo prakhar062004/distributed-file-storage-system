@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { uploadFile, listFiles, deleteFile, getDownloadUrl } from '../services/fileService';
+import AppLayout from '../components/AppLayout';
 
 function Dashboard() {
-  const { user, token, logout } = useAuth();
+  const { user, token } = useAuth();
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -55,19 +56,11 @@ function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 px-4 py-8">
+    <AppLayout>
       <div className="max-w-3xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-white">My Files</h1>
-            <p className="text-slate-400 text-sm">{user?.name} · {user?.email}</p>
-          </div>
-          <button
-            onClick={logout}
-            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm"
-          >
-            Logout
-          </button>
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-white">My Files</h1>
+          <p className="text-slate-400 text-sm">{user?.name} · {user?.email}</p>
         </div>
 
         {error && (
@@ -142,7 +135,7 @@ function Dashboard() {
           )}
         </div>
       </div>
-    </div>
+    </AppLayout>
   );
 }
 
