@@ -3,6 +3,8 @@ const FormData = require('form-data');
 const STORAGE_NODES = require('../config/storageNodes');
 const ConsistentHashRing = require('./consistentHash');
 
+const NODE_REQUEST_TIMEOUT_MS = parseInt(process.env.NODE_REQUEST_TIMEOUT_MS, 10) || 3000;
+
 let roundRobinIndex = 0;
 const hashRing = new ConsistentHashRing(STORAGE_NODES);
 
@@ -34,6 +36,12 @@ const selectNodesForReplication = (chunkId, replicationFactor) => {
   return hashRing.getNodes(chunkId, replicationFactor);
 };
 
+/**
+ * All storage-node HTTP calls use an explicit timeout (default 3s, via
+ * NODE_REQUEST_TIMEOUT_MS) rather than relying on the OS's much longer
+ * default TCP timeout. This makes failover to a healthy replica fast when
+ * a node is dead, instead of waiting tens of seconds per failed attempt.
+ */
 const sendChunkToNode = async (node, chunkId, buffer) => {
   const form = new FormData();
   form.append('chunkId', chunkId);
@@ -43,6 +51,7 @@ const sendChunkToNode = async (node, chunkId, buffer) => {
     headers: form.getHeaders(),
     maxContentLength: Infinity,
     maxBodyLength: Infinity,
+    timeout: NODE_REQUEST_TIMEOUT_MS,
   });
 
   return response.data;
@@ -51,12 +60,15 @@ const sendChunkToNode = async (node, chunkId, buffer) => {
 const getChunkFromNode = async (node, chunkId) => {
   const response = await axios.get(`${node.url}/internal/chunks/${chunkId}`, {
     responseType: 'arraybuffer',
+    timeout: NODE_REQUEST_TIMEOUT_MS,
   });
   return Buffer.from(response.data);
 };
 
 const deleteChunkFromNode = async (node, chunkId) => {
-  await axios.delete(`${node.url}/internal/chunks/${chunkId}`);
+  await axios.delete(`${node.url}/internal/chunks/${chunkId}`, {
+    timeout: NODE_REQUEST_TIMEOUT_MS,
+  });
 };
 
 module.exports = {
