@@ -1,47 +1,49 @@
 # Distributed File Storage System
 
-A production-style, resume-worthy distributed file storage system built with the MERN stack.
+A production-style distributed file storage system built with the MERN stack — files are chunked, distributed across independent storage nodes, replicated for fault tolerance, continuously health-monitored, and automatically self-healing after node failures.
 
-## Status: Phase 0 - Project Planning Complete
+Built incrementally, phase by phase, with every distributed-systems claim backed by a real, reproducible test — including deliberately killing live processes and containers to prove failure recovery actually works, not just that it was designed to.
 
-## What is this?
-A simplified distributed object storage system. Files are chunked, distributed across
-multiple independent storage nodes, replicated for fault tolerance, and continuously
-health-checked with automatic failure recovery.
+---
 
-## Why distributed?
-- Multiple independent storage nodes doing the same job, not one server with subfolders
-- No single point of failure for data (replication)
-- Coordination without a central bottleneck in the data path
+## 1. Project Overview
 
-## Functional Requirements
-- User auth (register/login, JWT)
-- Chunked file upload/download with streaming
-- File metadata, folders, sharing with permissions
-- Distributed chunk placement across storage nodes
-- Chunk replication
-- Node health monitoring via heartbeats
-- Automatic replica recovery on node failure
-- Checksum-based integrity verification
+This system is a simplified version of what powers real distributed object storage (think: the storage layer underneath Dropbox or S3) — not a file-upload app with extra steps, but a genuinely distributed system where:
 
-## Non-Functional Requirements
-- Tolerate at least 1 storage node failure without data loss
-- Streaming uploads (no full in-memory buffering)
-- Eventual consistency for replica repair
-- Structured logging for key events
+- Files are split into chunks and spread across multiple independent storage-node processes
+- Each chunk is replicated across nodes, so losing any single node doesn't lose data
+- The system detects node failures on its own, without anyone manually checking
+- Under-replicated chunks are automatically repaired in the background, restoring full redundancy without human intervention
 
-## Tech Stack
-- Frontend: React, Vite, Tailwind CSS, Axios, React Router
-- Backend: Node.js, Express
-- Database: MongoDB, Mongoose
-- Cache/Coordination: Redis
-- Queue: BullMQ
-- Storage: Custom distributed storage-node services
-- Containerization: Docker, Docker Compose
+Every one of those properties has been demonstrated with a real test — a real process killed with `Ctrl+C`, a real Docker container stopped with `docker stop`, a real corrupted byte written directly to disk — and the system verified to recover correctly each time.
 
-## Architecture
-See docs/architecture.md (added in later phases)
+## 2. Features
 
-## Development Phases
-This project is built incrementally, one feature per commit. See commit history
-and docs/ for details as each phase lands.
+- User authentication (JWT, bcrypt password hashing)
+- Chunked file upload/download with streaming (constant memory regardless of file size)
+- Distributed chunk placement via consistent hashing
+- Configurable replication (default factor: 2)
+- SHA-256 checksum verification with automatic fallback to a healthy replica on corruption
+- Proactive node health monitoring via heartbeats
+- Automatic replica recovery after node failure — no manual intervention required
+- Redis-backed caching, distributed locking, and ephemeral state tracking
+- BullMQ-based background job queue with retries and exponential backoff
+- File sharing with tiered permissions (READ / WRITE / OWNER)
+- Full Docker Compose deployment (7 services, one command)
+- Automated test suite (Jest + Supertest)
+- Structured logging (Winston)
+- Load-tested for concurrent uploads/downloads and failure-under-load behavior
+
+## 3. Tech Stack
+
+**Frontend:** React, Vite, Tailwind CSS, Axios, React Router
+**Backend:** Node.js, Express
+**Database:** MongoDB, Mongoose
+**Cache / Coordination:** Redis (ioredis)
+**Queue:** BullMQ
+**Storage:** Custom distributed storage-node services (independent Node/Express processes)
+**Containerization:** Docker, Docker Compose
+**Testing:** Jest, Supertest, mongodb-memory-server, autocannon
+**Logging:** Winston
+
+## 4. Architecture
