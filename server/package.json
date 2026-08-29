@@ -3,11 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-  "start": "node src/server.js",
-  "dev": "nodemon src/server.js",
-  "test": "cross-env NODE_ENV=test jest --runInBand"
-},
-
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "cross-env NODE_ENV=test jest --runInBand"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -24,7 +23,8 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.3",
     "morgan": "^1.11.0",
-    "multer": "^2.2.0"
+    "multer": "^2.2.0",
+    "winston": "^3.19.0"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",

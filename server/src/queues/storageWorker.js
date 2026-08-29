@@ -2,9 +2,10 @@ const { Worker } = require('bullmq');
 const { connection } = require('./storageQueue');
 const JOB_TYPES = require('./jobTypes');
 const { runRecoveryCycle } = require('../services/recoveryService');
+const logger = require('../utils/logger');
 
 const processJob = async (job) => {
-  console.log(`[worker] Processing job ${job.id} (${job.name})`);
+  logger.info('Worker processing job', { jobId: job.id, jobName: job.name });
 
   switch (job.name) {
     case JOB_TYPES.RUN_RECOVERY_CYCLE:
@@ -26,14 +27,14 @@ const startWorker = () => {
   });
 
   worker.on('completed', (job, result) => {
-    console.log(`[worker] Job ${job.id} (${job.name}) completed:`, result);
+    logger.info('Worker job completed', { jobId: job.id, jobName: job.name, result });
   });
 
   worker.on('failed', (job, err) => {
-    console.error(`[worker] Job ${job.id} (${job.name}) failed after ${job.attemptsMade} attempts: ${err.message}`);
+    logger.error('Worker job failed', { jobId: job.id, jobName: job.name, attempts: job.attemptsMade, error: err.message });
   });
 
-  console.log('[worker] Storage job worker started');
+  logger.info('Storage job worker started');
   return worker;
 };
 

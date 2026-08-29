@@ -1,4 +1,5 @@
 const redisClient = require('../config/redis');
+const logger = require('../utils/logger');
 
 const HEARTBEAT_KEY_PREFIX = 'node:heartbeat:';
 const HEARTBEAT_TIMEOUT_MS = parseInt(process.env.HEARTBEAT_TIMEOUT_MS, 10) || 15000;
@@ -21,8 +22,8 @@ const recordHeartbeat = async (nodeId, data) => {
 const getNodeStatus = async (nodeId) => {
   const key = `${HEARTBEAT_KEY_PREFIX}${nodeId}`;
   const raw = await redisClient.get(key);
-
   if (!raw) {
+    logger.warn('Node has no heartbeat record', { nodeId });
     return { nodeId, status: 'unhealthy', reason: 'no heartbeat received', lastSeen: null };
   }
 
@@ -30,6 +31,7 @@ const getNodeStatus = async (nodeId) => {
   const elapsed = Date.now() - data.lastSeen;
 
   if (elapsed > HEARTBEAT_TIMEOUT_MS) {
+    logger.warn('Node heartbeat overdue', { nodeId, elapsedMs: elapsed });
     return { nodeId, status: 'unhealthy', reason: 'heartbeat overdue', lastSeen: data.lastSeen, elapsed };
   }
 

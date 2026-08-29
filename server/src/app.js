@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const morgan = require('morgan');
 const errorHandler = require('./middleware/errorHandler');
 const authRoutes = require('./routes/authRoutes');
 const fileRoutes = require('./routes/fileRoutes');
@@ -18,9 +17,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/api/nodes', nodeRoutes);
 
-if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
-}
+const requestLogger = require('./middleware/requestLogger');
+app.use(requestLogger);
 
 // Health check route
 app.get('/api/health', (req, res) => {

@@ -7,7 +7,7 @@ const { verifyChecksum } = require('../utils/checksum');
 const redisClient = require('../config/redis');
 const { hasPermission } = require('../services/permissionService');
 const Share = require('../models/Share');
-
+const logger = require('../utils/logger');
 
 // @desc    Upload a file (chunked, distributed and replicated across storage nodes)
 // @route   POST /api/files/upload
@@ -48,6 +48,13 @@ const uploadFile = async (req, res, next) => {
     await redisClient.del(uploadStateKey); // upload complete — no longer "in progress"
     await redisClient.del(`files:list:${req.user.id}`);
 
+    logger.info('File uploaded', {
+      fileId: file._id,
+      ownerId: req.user.id,
+      chunkCount: chunks.length,
+      sizeBytes: file.size,
+    });
+
     res.status(201).json({
       success: true,
       file,
@@ -57,6 +64,7 @@ const uploadFile = async (req, res, next) => {
     if (file) {
       file.status = 'failed';
       await file.save().catch(() => {});
+      logger.error('File upload failed', { fileId: file._id, error: error.message });
     }
     next(error);
   }
@@ -140,6 +148,12 @@ const downloadFile = async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'No chunk data found for this file' });
     }
 
+    logger.info('File download started', {
+      fileId: file._id,
+      userId: req.user.id,
+      chunkCount: chunks.length,
+    });
+
     res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
     res.setHeader('Content-Type', file.mimeType);
 
@@ -156,7 +170,11 @@ const downloadFile = async (req, res, next) => {
 
           if (!verifyChecksum(candidateData, chunk.checksum)) {
             lastError = new Error(`Checksum mismatch — data corruption detected on ${nodeId}`);
-            console.error(`CORRUPTION DETECTED: chunk ${chunk.chunkIndex} on ${nodeId} failed checksum verification, trying next replica`);
+            logger.error('Chunk corruption detected', {
+              chunkId: chunk.chunkId,
+              chunkIndex: chunk.chunkIndex,
+              nodeId,
+            });
             continue;
           }
 
@@ -164,7 +182,12 @@ const downloadFile = async (req, res, next) => {
           break;
         } catch (err) {
           lastError = err;
-          console.error(`Replica on ${nodeId} failed for chunk ${chunk.chunkIndex}, trying next replica if available`);
+          logger.warn('Replica unreachable, trying next replica', {
+            chunkId: chunk.chunkId,
+            chunkIndex: chunk.chunkIndex,
+            nodeId,
+            error: err.message,
+          });
         }
       }
 
@@ -191,7 +214,8 @@ const verifyFileIntegrity = async (req, res, next) => {
     }
 
     const file = await File.findById(req.params.id);
-  
+    const chunks = await Chunk.find({ fileId: file._id }).sort({ chunkIndex: 1 });
+
     const report = [];
 
     for (const chunk of chunks) {
@@ -242,7 +266,11 @@ const deleteFile = async (req, res, next) => {
           try {
             await deleteChunkFromNode(node, chunk.chunkId);
           } catch (err) {
-            console.error(`Failed to delete chunk ${chunk.chunkId} from ${nodeId}: ${err.message}`);
+            logger.warn('Failed to delete chunk from node', {
+              chunkId: chunk.chunkId,
+              nodeId,
+              error: err.message,
+            });
           }
         }
       }
@@ -252,6 +280,8 @@ const deleteFile = async (req, res, next) => {
     await File.deleteOne({ _id: file._id });
     await Share.deleteMany({ fileId: file._id });
     await redisClient.del(`files:list:${req.user.id}`);
+
+    logger.info('File deleted', { fileId: file._id, ownerId: req.user.id, chunkCount: chunks.length });
 
     res.status(200).json({ success: true, message: 'File and all chunk replicas deleted' });
   } catch (error) {

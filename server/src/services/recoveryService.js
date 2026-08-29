@@ -3,6 +3,7 @@ const { getAllNodeStatuses } = require('./nodeHealthService');
 const { getChunkFromNode, sendChunkToNode, hashRing, STORAGE_NODES } = require('./storageCoordinator');
 const { verifyChecksum } = require('../utils/checksum');
 const { acquireLock, releaseLock } = require('../utils/distributedLock');
+const logger = require('../utils/logger');
 
 const REPLICATION_FACTOR = parseInt(process.env.REPLICATION_FACTOR, 10) || 1;
 const RECOVERY_LOCK_KEY = 'lock:recovery-cycle';
@@ -18,7 +19,7 @@ const runRecoveryCycle = async () => {
   const lockToken = await acquireLock(RECOVERY_LOCK_KEY, 30000);
 
   if (!lockToken) {
-    console.log('[recovery] Another recovery cycle is already in progress — skipping this run');
+    logger.info('Recovery: another recovery cycle is already in progress — skipping this run');
     return { scanned: 0, repaired: 0, skipped: 0, message: 'Skipped — recovery already in progress' };
   }
 
@@ -35,7 +36,7 @@ const runRecoveryCycle = async () => {
       return { scanned: 0, repaired: 0, skipped: 0, message: 'All nodes healthy — nothing to recover' };
     }
 
-    console.log(`[recovery] Detected unhealthy nodes: ${[...unhealthyNodeIds].join(', ')}`);
+    logger.warn('Recovery: unhealthy nodes detected', { unhealthyNodeIds: [...unhealthyNodeIds] });
 
     const affectedChunks = await Chunk.find({
       storageLocations: { $in: [...unhealthyNodeIds] },
@@ -59,8 +60,8 @@ const runRecoveryCycle = async () => {
 const repairChunk = async (chunk, unhealthyNodeIds, healthyNodeIds) => {
   const survivingLocations = chunk.storageLocations.filter((nodeId) => healthyNodeIds.has(nodeId));
 
-  if (survivingLocations.length === 0) {
-    console.error(`[recovery] Chunk ${chunk.chunkId} has NO healthy replicas left — cannot repair, data at risk`);
+    if (survivingLocations.length === 0) {
+    logger.error('Recovery: chunk has no healthy replicas — data at risk', { chunkId: chunk.chunkId, fileId: chunk.fileId });
     return { repaired: false, reason: 'no healthy source replica' };
   }
 
@@ -77,18 +78,18 @@ const repairChunk = async (chunk, unhealthyNodeIds, healthyNodeIds) => {
   try {
     data = await getChunkFromNode(sourceNode, chunk.chunkId);
     if (!verifyChecksum(data, chunk.checksum)) {
-      console.error(`[recovery] Source replica ${sourceNodeId} for chunk ${chunk.chunkId} is itself corrupted — skipping`);
+      logger.error('Recovery: source replica is corrupted — skipping', { chunkId: chunk.chunkId, sourceNodeId });
       return { repaired: false, reason: 'source replica corrupted' };
     }
   } catch (err) {
-    console.error(`[recovery] Failed to fetch source copy of chunk ${chunk.chunkId} from ${sourceNodeId}: ${err.message}`);
+    logger.error('Recovery: failed to fetch source copy', { chunkId: chunk.chunkId, sourceNodeId, message: err.message });
     return { repaired: false, reason: 'source fetch failed' };
   }
 
   const candidateNodes = [...healthyNodeIds].filter((id) => !survivingLocations.includes(id));
 
   if (candidateNodes.length === 0) {
-    console.error(`[recovery] No healthy target node available to re-replicate chunk ${chunk.chunkId}`);
+    logger.error('Recovery: no healthy target node available to re-replicate chunk', { chunkId: chunk.chunkId });
     return { repaired: false, reason: 'no available target node' };
   }
 
@@ -98,14 +99,14 @@ const repairChunk = async (chunk, unhealthyNodeIds, healthyNodeIds) => {
   try {
     await sendChunkToNode(targetNode, chunk.chunkId, data);
   } catch (err) {
-    console.error(`[recovery] Failed to write recovered chunk ${chunk.chunkId} to ${targetNodeId}: ${err.message}`);
+    logger.error('Recovery: failed to write recovered chunk', { chunkId: chunk.chunkId, targetNodeId, message: err.message });
     return { repaired: false, reason: 'target write failed' };
   }
 
   chunk.storageLocations = [...survivingLocations, targetNodeId];
   await chunk.save();
 
-  console.log(`[recovery] Repaired chunk ${chunk.chunkId}: now on [${chunk.storageLocations.join(', ')}]`);
+logger.info('Recovery: chunk repaired', { chunkId: chunk.chunkId, newLocations: chunk.storageLocations });
   return { repaired: true, reason: 'replicated to new node' };
 };
 
