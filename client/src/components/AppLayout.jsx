@@ -2,9 +2,9 @@ import Navbar from './Navbar';
 
 function AppLayout({ children }) {
   return (
-    <div className="min-h-screen bg-slate-900">
+    <div className="min-h-screen">
       <Navbar />
-      <div className="px-4 py-8">{children}</div>
+      <div className="px-4 py-10 animate-fade-in">{children}</div>
     </div>
   );
 }

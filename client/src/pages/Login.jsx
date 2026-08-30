@@ -10,9 +10,7 @@ function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,49 +28,59 @@ function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex items-center justify-center px-4">
-      <div className="bg-slate-800 p-8 rounded-lg shadow-lg w-full max-w-md">
-        <h1 className="text-2xl font-bold text-white mb-6">Login</h1>
-        {error && (
-          <div className="bg-red-500/20 border border-red-500 text-red-300 px-4 py-2 rounded mb-4 text-sm">
-            {error}
-          </div>
-        )}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-slate-300 text-sm mb-1">Email</label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              className="w-full px-3 py-2 rounded bg-slate-700 text-white border border-slate-600 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-slate-300 text-sm mb-1">Password</label>
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              className="w-full px-3 py-2 rounded bg-slate-700 text-white border border-slate-600 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-medium disabled:opacity-50"
-          >
-            {loading ? 'Logging in...' : 'Login'}
-          </button>
-        </form>
-        <p className="text-slate-400 text-sm mt-4 text-center">
-          Don't have an account?{' '}
-          <Link to="/register" className="text-blue-400 hover:underline">Register</Link>
-        </p>
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="w-full max-w-md animate-fade-in">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-violet-400 via-fuchsia-300 to-cyan-300 bg-clip-text text-transparent">
+            Welcome back
+          </h1>
+          <p className="text-slate-400 text-sm mt-2">Sign in to your distributed storage</p>
+        </div>
+
+        <div className="bg-white/[0.03] backdrop-blur-xl border border-white/10 p-8 rounded-2xl shadow-2xl shadow-black/40">
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/30 text-red-300 px-4 py-2.5 rounded-lg mb-5 text-sm animate-fade-in">
+              {error}
+            </div>
+          )}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-slate-300 text-sm mb-1.5 font-medium">Email</label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                required
+                className="w-full px-3.5 py-2.5 rounded-lg bg-white/5 text-white border border-white/10 placeholder:text-slate-500 focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-400/20 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-300 text-sm mb-1.5 font-medium">Password</label>
+              <input
+                type="password"
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+                className="w-full px-3.5 py-2.5 rounded-lg bg-white/5 text-white border border-white/10 placeholder:text-slate-500 focus:outline-none focus:border-violet-400/60 focus:ring-2 focus:ring-violet-400/20 transition-all"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:brightness-110 hover:shadow-lg hover:shadow-violet-500/25 active:scale-[0.98] text-white py-2.5 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+            >
+              {loading ? 'Signing in…' : 'Sign In'}
+            </button>
+          </form>
+          <p className="text-slate-400 text-sm mt-6 text-center">
+            Don't have an account?{' '}
+            <Link to="/register" className="text-violet-400 hover:text-violet-300 font-medium transition-colors">
+              Register
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );
